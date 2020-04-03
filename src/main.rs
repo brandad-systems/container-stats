@@ -50,8 +50,8 @@ struct Opt {
     top: bool,
 
     /// Filters container names by a regular expression
-    #[structopt(long, short, default_value = ".*")]
-    regex: String,
+    #[structopt(long, short)]
+    regex: Option<String>,
 
     /// The way the used memory is calculated. Options are: "procmaps" (cross-platform), "rss" and "vsz" (both linux).
     #[structopt(long, short, default_value = "procmaps")]
@@ -74,8 +74,8 @@ fn main() {
     fn handle_containers(opt: &Opt, docker: Docker, containers: Vec<Container>) {
         let mut all_stats = gather_stats(opt, docker, containers);
 
-        if !opt.regex.eq(".*") {
-            all_stats = filter(all_stats, &opt.regex);
+        if let Some(regex) = &opt.regex {
+            all_stats = filter(all_stats, regex);
         }
 
         if opt.total {
