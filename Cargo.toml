@@ -5,17 +5,17 @@ authors = ["MCOfficer <mcofficer@gmx.de>"]
 description = "A small tool to analyze RAM usage of large amounts of docker containers."
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 proc-maps = "0.1.6"
-dockworker = {version="0.0.16", default_features=false, features=[]}
+dockworker = { version = "0.0.16", default_features = false, features = [] }
 itertools = "0.9.0"
 bytesize = "1.0.0"
 tabled = "0.1.0"
 structopt = "0.3"
 fancy-regex = "0.3.3"
 procfs = "0.7.8"
+serde_json = "1.0.50"
+serde = { version = "1.0", features = ["derive"] }
 
 [profile.release]
 opt-level = "z"

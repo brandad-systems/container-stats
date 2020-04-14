@@ -7,20 +7,41 @@ use procfs::process::Process;
 use fancy_regex::Regex;
 use structopt::StructOpt;
 use tabled::{table, Tabled};
+use serde::{Serialize, Serializer};
+use std::fmt;
 
-#[derive(Tabled)]
+#[derive(Tabled, Serialize, Debug)]
 struct ContainerStats {
-    memory: ByteSize,
+    memory: SerializableByteSize,
     name: String,
     id: String,
 }
 
-#[derive(Tabled)]
+#[derive(Tabled, Serialize)]
 struct ContainerGroup {
-    memory: ByteSize,
+    memory: SerializableByteSize,
     containers: i32,
     fix: String,
 }
+
+#[derive(Debug, Clone, Copy)]
+struct SerializableByteSize(ByteSize);
+
+impl Serialize for SerializableByteSize {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u64(self.0.as_u64())
+    }
+}
+
+impl fmt::Display for SerializableByteSize {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "container-stats", author, about)]
@@ -48,6 +69,10 @@ struct Opt {
     /// Use docker top. Not supported on windows & significantly slower, but correctly detects multiple processes per container
     #[structopt(long)]
     top: bool,
+
+    /// Print as json instead of a table
+    #[structopt(long)]
+    json: bool,
 
     /// Filters container names by a regular expression
     #[structopt(long, short)]
@@ -79,7 +104,7 @@ fn main() {
         }
 
         if opt.total {
-            let total = fold(&all_stats, 0, |i, stats| i + stats.memory.as_u64());
+            let total = fold(&all_stats, 0, |i, stats| i + stats.memory.0.as_u64());
             println!("Total: {} ({} B)", ByteSize::b(total), total);
             return;
         }
@@ -96,7 +121,7 @@ fn main() {
                 let mut found = false;
                 for group in &mut grouped_stats {
                     if group.fix.eq(&fix) {
-                        group.memory = group.memory + stat.memory;
+                        group.memory = SerializableByteSize(group.memory.0 + stat.memory.0);
                         group.containers += 1;
                         found = true;
                     }
@@ -112,16 +137,16 @@ fn main() {
             }
 
             if opt.sort {
-                grouped_stats.sort_by(|a, b| b.memory.cmp(&a.memory));
+                grouped_stats.sort_by(|a, b| b.memory.0.cmp(&a.memory.0));
             }
-            println!("{}", table(&grouped_stats));
+            print(opt, &grouped_stats);
             return;
         }
 
         if opt.sort {
-            all_stats.sort_by(|a, b| b.memory.cmp(&a.memory));
+            all_stats.sort_by(|a, b| b.memory.0.cmp(&a.memory.0));
         }
-        println!("{}", table(&all_stats));
+        print(opt, &all_stats);
     }
 
     fn gather_stats(opt: &Opt, docker: Docker, containers: Vec<Container>) -> Vec<ContainerStats> {
@@ -147,7 +172,7 @@ fn main() {
             all_stats.push(ContainerStats {
                 id: container.Id,
                 name: join(container.Names, ", "),
-                memory: ByteSize::b(memory),
+                memory: SerializableByteSize(ByteSize::b(memory)),
             })
         }
         all_stats
@@ -179,5 +204,14 @@ fn main() {
             .into_iter()
             .filter(|s| re.is_match(&s.name).unwrap())
             .collect()
+    }
+
+    fn print(opt: &Opt, to_print: &Vec<impl Tabled + Serialize>) {
+        if opt.json {
+            println!("{}", serde_json::to_string_pretty(to_print).unwrap())
+        }
+        else {
+            println!("{}", table(to_print));
+        }
     }
 }
