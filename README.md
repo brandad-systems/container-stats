@@ -25,7 +25,7 @@ OPTIONS:
     -d, --delimiter <delimiter>              Delimiter for grouping [default: -]
     -m, --memory-backend <memory-backend>    The way the used memory is calculated. Options are: "procmaps" (cross-
                                              platform), "rss" and "vsz" (both linux) [default: procmaps]
-    -r, --regex <regex>                      Filters container names by a regular expression [default: .*]
+    -r, --regex <regex>                      Filters container names by a regular expression
 ```
 
 ## Building
