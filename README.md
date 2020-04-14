@@ -14,6 +14,7 @@ FLAGS:
         --group-by-prefix    Group containers by prefix
         --group-by-suffix    Group containers by suffix
     -h, --help               Prints help information
+        --json               Print as json instead of a table
     -s, --sort               Sorts containers by memory used
         --top                Use docker top. Not supported on windows & significantly slower, but correctly detects
                              multiple processes per container
@@ -51,6 +52,18 @@ $ sudo ./container-stats
 +----------+--------+----------------------------------------------------------+------------------------------------------------------------------+
 | 17.2 GB  | 195327 |                  /sample-container-three                 | 1b05272735bf083e1b148169130f620505dbc2fcff3c4fc6f8f46e49a4efa676 |
 +----------+--------+----------------------------------------------------------+------------------------------------------------------------------+
+```
+
+Same, but machine-readable:
+```
+$ sudo ./container-stats --json
+[
+  {
+    "memory": 128278528,
+    "name": "/portainer",
+    "id": "60c914b19bf7d6101975f39928b201297ead82be87b14d96c259c23612d0d515"
+  }
+]
 ```
 
 Show the RSS usage of all containers, combined
