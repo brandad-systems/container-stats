@@ -213,6 +213,7 @@ name = "container-stats"
 version = "0.2.1"
 dependencies = [
  "bytesize",
+ "chrono",
  "dockworker",
  "fancy-regex",
  "itertools",
