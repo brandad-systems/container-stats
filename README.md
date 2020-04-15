@@ -3,7 +3,7 @@
 A small tool to analyze RAM usage of large amounts of docker containers.
 
 ```
-container-stats 0.2.1
+container-stats 0.3.0
 MCOfficer <mcofficer@gmx.de>
 A small tool to analyze RAM usage of large amounts of docker containers.
 

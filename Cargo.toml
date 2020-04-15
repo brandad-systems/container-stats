@@ -1,6 +1,6 @@
 [package]
 name = "container-stats"
-version = "0.2.1"
+version = "0.3.0"
 authors = ["MCOfficer <mcofficer@gmx.de>"]
 description = "A small tool to analyze RAM usage of large amounts of docker containers."
 edition = "2018"
