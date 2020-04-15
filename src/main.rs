@@ -1,13 +1,12 @@
+mod proc;
+
 use bytesize::ByteSize;
 use dockworker::container::{Container, ContainerFilters};
 use dockworker::Docker;
 use fancy_regex::Regex;
 use itertools::{fold, join};
-use proc_maps::{get_process_maps, Pid};
-use procfs::process::Process;
 use serde::{Serialize, Serializer};
 use std::fmt;
-use chrono;
 use structopt::StructOpt;
 use tabled::{table, Tabled};
 
@@ -169,46 +168,18 @@ fn gather_stats(opt: &Opt, docker: Docker, containers: Vec<Container>) -> Vec<Co
         }
 
         for pid in pids {
-            memory += get_process_memory_bytes(opt, pid) as u64;
-            average_percent_cpu += get_process_average_cpu(pid);
+            memory += proc::get_process_memory_bytes(&opt.memory_backend, pid) as u64;
+            average_percent_cpu += proc::get_process_average_cpu(pid);
         }
 
         all_stats.push(ContainerStats {
             id: container.Id,
             name: join(container.Names, ", "),
             memory: SerializableByteSize(ByteSize::b(memory)),
-            average_percent_cpu
+            average_percent_cpu,
         })
     }
     all_stats
-}
-
-fn get_process_memory_bytes(opt: &Opt, pid: i64) -> usize {
-    let mut memory = 0;
-
-    if opt.memory_backend.eq("procmaps") {
-        let maps = get_process_maps(pid as Pid).unwrap();
-        for map in maps {
-            memory += map.size();
-        }
-    } else {
-        let p = Process::new(pid as i32).expect("Failed to access process");
-        let stat = p.stat().expect("Failed to get process stat");
-        memory = match opt.memory_backend.as_ref() {
-            "rss" => stat.rss_bytes() as usize,
-            "vsz" => stat.vsize as usize,
-            &_ => panic!("Got unknown memory backend"),
-        }
-    }
-    memory
-}
-
-fn get_process_average_cpu(pid: i64) -> f32 {
-    let p = Process::new(pid as i32).expect("Failed to access process");
-    let stat = p.stat().expect("Failed to get process stat");
-    let total_ticks = stat.utime + stat.stime + stat.cutime as u64 + stat.cstime as u64;
-    let seconds = (chrono::Local::now() - stat.starttime().unwrap()).num_seconds() as f32;
-    100.0 * ((total_ticks as f32 / procfs::ticks_per_second().unwrap() as f32) / seconds)
 }
 
 fn filter(stats: Vec<ContainerStats>, pattern: &str) -> Vec<ContainerStats> {
