@@ -1,14 +1,14 @@
 use bytesize::ByteSize;
 use dockworker::container::{Container, ContainerFilters};
 use dockworker::Docker;
+use fancy_regex::Regex;
 use itertools::{fold, join};
 use proc_maps::{get_process_maps, Pid};
 use procfs::process::Process;
-use fancy_regex::Regex;
-use structopt::StructOpt;
-use tabled::{table, Tabled};
 use serde::{Serialize, Serializer};
 use std::fmt;
+use structopt::StructOpt;
+use tabled::{table, Tabled};
 
 #[derive(Tabled, Serialize, Debug)]
 struct ContainerStats {
@@ -41,7 +41,6 @@ impl fmt::Display for SerializableByteSize {
         self.0.fmt(f)
     }
 }
-
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "container-stats", author, about)]
@@ -113,9 +112,10 @@ fn main() {
             let mut grouped_stats = Vec::<ContainerGroup>::new();
             for stat in &all_stats {
                 let mut split_name = stat.name.split(opt.delimiter);
-                let fix = match opt.group_by_prefix {
-                    true => split_name.nth(0).unwrap_or(&stat.name).to_string(),
-                    false => split_name.last().unwrap_or(&stat.name).to_string(),
+                let fix = if opt.group_by_prefix {
+                    split_name.next().unwrap_or(&stat.name).to_string()
+                } else {
+                    split_name.last().unwrap_or(&stat.name).to_string()
                 };
 
                 let mut found = false;
@@ -160,8 +160,7 @@ fn main() {
                 for p in processes {
                     pids.push(p.pid.parse::<i64>().unwrap());
                 }
-            }
-            else {
+            } else {
                 pids.push(docker.container_info(&container.Id).unwrap().State.Pid);
             }
 
@@ -206,11 +205,10 @@ fn main() {
             .collect()
     }
 
-    fn print(opt: &Opt, to_print: &Vec<impl Tabled + Serialize>) {
+    fn print(opt: &Opt, to_print: &[impl Tabled + Serialize]) {
         if opt.json {
             println!("{}", serde_json::to_string_pretty(to_print).unwrap())
-        }
-        else {
+        } else {
             println!("{}", table(to_print));
         }
     }
