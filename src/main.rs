@@ -21,6 +21,7 @@ struct ContainerStats {
 #[derive(Tabled, Serialize)]
 struct ContainerGroup {
     memory: SerializableByteSize,
+    average_percent_cpu: f32,
     containers: i32,
     fix: String,
 }
@@ -124,6 +125,7 @@ fn handle_containers(opt: &Opt, docker: Docker, containers: Vec<Container>) {
             for group in &mut grouped_stats {
                 if group.fix.eq(&fix) {
                     group.memory = SerializableByteSize(group.memory.0 + stat.memory.0);
+                    group.average_percent_cpu += stat.average_percent_cpu;
                     group.containers += 1;
                     found = true;
                 }
@@ -132,6 +134,7 @@ fn handle_containers(opt: &Opt, docker: Docker, containers: Vec<Container>) {
             if !found {
                 grouped_stats.push(ContainerGroup {
                     memory: stat.memory,
+                    average_percent_cpu: stat.average_percent_cpu,
                     containers: 1,
                     fix: String::from(&fix),
                 });
