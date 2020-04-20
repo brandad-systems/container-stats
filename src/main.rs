@@ -1,5 +1,8 @@
 mod proc;
 
+#[macro_use]
+extern crate log;
+
 use bytesize::ByteSize;
 use dockworker::container::{Container, ContainerFilters};
 use dockworker::Docker;
@@ -82,38 +85,63 @@ struct Opt {
     /// The way the used memory is calculated. Options are: "procmaps" (cross-platform), "rss" and "vsz" (both linux).
     #[structopt(long, short, default_value = "procmaps")]
     memory_backend: String,
+
+    /// The logging level, in case the RUST_LOG environment variable cannot be set.
+    #[structopt(long)]
+    debug: Option<String>,
 }
 
 fn main() {
     let opt = Opt::from_args();
+
+    if let Some(level) = &opt.debug {
+        env_logger::init_from_env(env_logger::Env::default().default_filter_or(level));
+    } else {
+        env_logger::init();
+    }
+
+    debug!("Running with arguments: {:#?}", opt);
+
     if !["procmaps".to_owned(), "rss".to_owned(), "vsz".to_owned()].contains(&opt.memory_backend) {
-        println!("Error: unsupported memory backend");
+        error!("Error: unsupported memory backend");
         return;
     }
 
+    info!("Attempting to connect to docker daemon");
     let docker = Docker::connect_with_defaults().unwrap();
     match docker.list_containers(None, None, None, ContainerFilters::new()) {
         Ok(result) => handle_containers(&opt, docker, result),
-        Err(e) => println!("Error connecting to docker daemon: {}", e),
+        Err(e) => error!("Error connecting to docker daemon: {}", e),
     }
 }
 
 fn handle_containers(opt: &Opt, docker: Docker, containers: Vec<Container>) {
+    info!("Processing {} containers", containers.len());
     let mut all_stats = gather_stats(opt, docker, containers);
+    debug!("All stats gathered: {:#?}", all_stats);
 
     if let Some(regex) = &opt.regex {
+        debug!("Filtering {} stats by regex {}", all_stats.len(), regex);
         all_stats = filter(all_stats, regex);
+        debug!("Remaining: {} stats", all_stats.len());
     }
 
     if opt.total {
+        debug!("Calulating total memory usage (prints immediately)");
         let total = fold(&all_stats, 0, |i, stats| i + stats.memory.0.as_u64());
         println!("Total: {} ({} B)", ByteSize::b(total), total);
         return;
     }
 
     if opt.group_by_prefix || opt.group_by_suffix {
+        info!(
+            "Grouping {} stats (by prefix: {})",
+            all_stats.len(),
+            opt.group_by_prefix
+        );
         let mut grouped_stats = Vec::<ContainerGroup>::new();
         for stat in &all_stats {
+            debug!("Processing stats {:#?}", stat);
             let mut split_name = stat.name.split(opt.delimiter);
             let fix = if opt.group_by_prefix {
                 split_name.next().unwrap_or(&stat.name).to_string()
@@ -142,6 +170,7 @@ fn handle_containers(opt: &Opt, docker: Docker, containers: Vec<Container>) {
         }
 
         if opt.sort {
+            debug!("Sorting {} stats", grouped_stats.len());
             grouped_stats.sort_by(|a, b| b.memory.0.cmp(&a.memory.0));
         }
         print(opt, &grouped_stats);
@@ -149,6 +178,7 @@ fn handle_containers(opt: &Opt, docker: Docker, containers: Vec<Container>) {
     }
 
     if opt.sort {
+        debug!("Sorting {} stats", all_stats.len());
         all_stats.sort_by(|a, b| b.memory.0.cmp(&a.memory.0));
     }
     print(opt, &all_stats);
@@ -157,6 +187,7 @@ fn handle_containers(opt: &Opt, docker: Docker, containers: Vec<Container>) {
 fn gather_stats(opt: &Opt, docker: Docker, containers: Vec<Container>) -> Vec<ContainerStats> {
     let mut all_stats = Vec::new();
     for container in containers {
+        info!("Gathering stats for container with ID {}", container.Id);
         let mut memory = 0;
         let mut average_percent_cpu = 0.0;
         let mut pids = Vec::<i64>::new();
@@ -169,10 +200,23 @@ fn gather_stats(opt: &Opt, docker: Docker, containers: Vec<Container>) -> Vec<Co
         } else {
             pids.push(docker.container_info(&container.Id).unwrap().State.Pid);
         }
+        debug!("Found {} processes: {:#?}", pids.len(), pids);
 
         for pid in pids {
-            memory += proc::get_process_memory_bytes(&opt.memory_backend, pid) as u64;
-            average_percent_cpu += proc::get_process_average_cpu(pid);
+            match proc::get_process_memory_bytes(&opt.memory_backend, pid) {
+                Ok(mem) => memory += mem as u64,
+                Err(e) => error!(
+                    "Failed to get memory for process {} (from container {}) due to {}",
+                    pid, container.Id, e
+                ),
+            };
+            match proc::get_process_average_cpu(pid) {
+                Ok(cpu) => average_percent_cpu += cpu,
+                Err(e) => error!(
+                    "Failed to get average CPU for process {} (from container {}) due to {}",
+                    pid, container.Id, e
+                ),
+            };
         }
 
         all_stats.push(ContainerStats {
@@ -195,8 +239,10 @@ fn filter(stats: Vec<ContainerStats>, pattern: &str) -> Vec<ContainerStats> {
 
 fn print(opt: &Opt, to_print: &[impl Tabled + Serialize]) {
     if opt.json {
+        debug!("Printing as json");
         println!("{}", serde_json::to_string_pretty(to_print).unwrap())
     } else {
+        debug!("Printing as table");
         println!("{}", table(to_print));
     }
 }
