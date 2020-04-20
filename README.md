@@ -22,6 +22,7 @@ FLAGS:
     -V, --version            Prints version information
 
 OPTIONS:
+        --debug <debug>                      The logging level, in case the RUST_LOG environment variable cannot be set
     -d, --delimiter <delimiter>              Delimiter for grouping [default: -]
     -m, --memory-backend <memory-backend>    The way the used memory is calculated. Options are: "procmaps" (cross-
                                              platform), "rss" and "vsz" (both linux) [default: procmaps]
