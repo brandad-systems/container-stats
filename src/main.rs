@@ -7,7 +7,7 @@ use bytesize::ByteSize;
 use dockworker::container::{Container, ContainerFilters};
 use dockworker::Docker;
 use fancy_regex::Regex;
-use itertools::{fold, join};
+use itertools::{fold, join, Itertools};
 use serde::{Serialize, Serializer};
 use std::fmt;
 use structopt::StructOpt;
@@ -110,7 +110,16 @@ fn main() {
     info!("Attempting to connect to docker daemon");
     let docker = Docker::connect_with_defaults().unwrap();
     match docker.list_containers(None, None, None, ContainerFilters::new()) {
-        Ok(result) => handle_containers(&opt, docker, result),
+        Ok(result) => {
+            let wanted_state = "running";
+            debug!("Filtering containers {} by Status (want `{}`)", result.len(), wanted_state);
+            let v = result
+                .iter()
+                .filter(|c| c.State.eq(wanted_state))
+                .map(|c| c.to_owned())
+                .collect_vec();
+            handle_containers(&opt, docker, v);
+        }
         Err(e) => error!("Error connecting to docker daemon: {}", e),
     }
 }
