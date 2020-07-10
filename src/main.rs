@@ -12,6 +12,7 @@ use serde::{Serialize, Serializer};
 use std::fmt;
 use structopt::StructOpt;
 use tabled::{table, Tabled};
+use rayon::prelude::*;
 
 #[derive(Tabled, Serialize, Debug)]
 struct ContainerStats {
@@ -21,7 +22,7 @@ struct ContainerStats {
     id: String,
 }
 
-#[derive(Tabled, Serialize)]
+#[derive(Tabled, Serialize, Clone)]
 struct ContainerGroup {
     memory: SerializableByteSize,
     average_percent_cpu: f32,
@@ -34,8 +35,8 @@ struct SerializableByteSize(ByteSize);
 
 impl Serialize for SerializableByteSize {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
+        where
+            S: Serializer,
     {
         serializer.serialize_u64(self.0.as_u64())
     }
@@ -118,15 +119,15 @@ fn main() {
                 .filter(|c| c.State.eq(wanted_state))
                 .map(|c| c.to_owned())
                 .collect_vec();
-            handle_containers(&opt, docker, v);
+            handle_containers(&opt, v);
         }
         Err(e) => error!("Error connecting to docker daemon: {}", e),
     }
 }
 
-fn handle_containers(opt: &Opt, docker: Docker, containers: Vec<Container>) {
+fn handle_containers(opt: &Opt, containers: Vec<Container>) {
     info!("Processing {} containers", containers.len());
-    let mut all_stats = gather_stats(opt, docker, containers);
+    let mut all_stats = gather_stats(opt, containers);
     debug!("All stats gathered: {:#?}", all_stats);
 
     if let Some(regex) = &opt.regex {
@@ -193,9 +194,8 @@ fn handle_containers(opt: &Opt, docker: Docker, containers: Vec<Container>) {
     print(opt, &all_stats);
 }
 
-fn gather_stats(opt: &Opt, docker: Docker, containers: Vec<Container>) -> Vec<ContainerStats> {
-    let mut all_stats = Vec::new();
-    for container in containers {
+fn gather_stats(opt: &Opt, containers: Vec<Container>) -> Vec<ContainerStats> {
+    containers.par_iter().map_init(||  Docker::connect_with_defaults().unwrap(),|docker, container| {
         info!("Gathering stats for container with ID {}", container.Id);
         let mut memory = 0;
         let mut average_percent_cpu = 0.0;
@@ -228,14 +228,13 @@ fn gather_stats(opt: &Opt, docker: Docker, containers: Vec<Container>) -> Vec<Co
             };
         }
 
-        all_stats.push(ContainerStats {
-            id: container.Id,
-            name: join(container.Names, ", "),
+        ContainerStats {
+            id: container.Id.clone(),
+            name: join(&container.Names, ", "),
             memory: SerializableByteSize(ByteSize::b(memory)),
             average_percent_cpu,
-        })
-    }
-    all_stats
+        }
+    }).collect()
 }
 
 fn filter(stats: Vec<ContainerStats>, pattern: &str) -> Vec<ContainerStats> {
